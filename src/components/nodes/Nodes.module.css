@@ -1,0 +1,67 @@
+.node {
+    width: 240px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.endNode {
+    border-color: #ef4444;
+}
+
+.selected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+    background: #f1f5f9;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.icon {
+    color: var(--color-text-secondary);
+}
+
+.title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+}
+
+.body {
+    padding: 0.75rem;
+}
+
+.label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.stats {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px dashed var(--color-border);
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+.statRow {
+    display: flex;
+    justify-content: space-between;
+}
+
+.handle {
+    width: 10px !important;
+    height: 10px !important;
+    background: var(--color-text-secondary) !important;
+}

@@ -1,0 +1,28 @@
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.header {
+    height: 60px;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.5rem;
+}
+
+.title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+}

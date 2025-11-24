@@ -64,9 +64,11 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
                         emailSubject: 'Welcome to the family! 👋',
                         emailPreheader: 'We\'re so glad you\'re here.',
                         sendMode: 'immediate',
+                        branchType: 'open',
+                        timeout: 48, // 2 Days
                         emailBody: createEmailHtml(
                             'Welcome Aboard!',
-                            'Hi {{user.firstName}},<br><br>Thanks for joining our community. We are thrilled to have you with us. Over the next few days, we will send you some tips to get the most out of our service.<br><br>To get started, check out our getting started guide.',
+                            'Hi {{user.firstName}},<br><br>Thanks for joining our community. We are thrilled to have you on board. Over the next few days, we will send you some tips to get the most out of our service.<br><br>To get started, check out our getting started guide.',
                             'Get Started'
                         )
                     },
@@ -74,41 +76,16 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
                 }
             },
             {
-                id: '3',
-                type: 'wait',
-                position: { x: 850, y: 250 },
-                data: {
-                    label: 'Wait 2 Days',
-                    config: { waitMode: 'duration', waitDuration: 2, waitUnit: 'days' },
-                    stats: { processed: 0, dropped: 0 }
-                }
-            },
-            {
-                id: '4',
-                type: 'split',
-                position: { x: 1250, y: 250 },
-                data: {
-                    label: 'Opened Welcome?',
-                    config: {
-                        splitType: 'behavior',
-                        branches: [
-                            { id: 'yes', label: 'Opened', conditions: [{ id: 'c1', field: 'email_open', operator: 'equals', value: 'true' }] },
-                            { id: 'no', label: 'Did Not Open', conditions: [] }
-                        ]
-                    },
-                    stats: { processed: 0, dropped: 0 }
-                }
-            },
-            {
                 id: '5',
                 type: 'email',
-                position: { x: 1650, y: 100 },
+                position: { x: 850, y: 100 },
                 data: {
                     label: 'Product Showcase',
                     config: {
                         emailSubject: 'Curated just for you ✨',
                         emailPreheader: 'Check out our best sellers.',
                         sendMode: 'immediate',
+                        branchType: 'sent',
                         emailBody: createEmailHtml(
                             'Our Best Sellers',
                             'Since you are interested, we thought you might like to see what others are buying. These are our top-rated products this month.',
@@ -121,13 +98,15 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '6',
                 type: 'email',
-                position: { x: 1650, y: 400 },
+                position: { x: 850, y: 400 },
                 data: {
                     label: 'Follow-up: Did you see this?',
                     config: {
                         emailSubject: 'In case you missed it...',
                         emailPreheader: 'We don\'t want you to miss out.',
                         sendMode: 'immediate',
+                        branchType: 'click',
+                        timeout: 24,
                         emailBody: createEmailHtml(
                             'Just checking in',
                             'Hey {{user.firstName}}, we noticed you haven\'t had a chance to open our welcome email yet. We really don\'t want you to miss out on the exclusive offer we sent.',
@@ -140,7 +119,7 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '7',
                 type: 'end',
-                position: { x: 2050, y: 100 },
+                position: { x: 1250, y: 100 },
                 data: {
                     label: 'Engaged User',
                     config: { isGoal: true },
@@ -150,9 +129,39 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '8',
                 type: 'end',
-                position: { x: 2050, y: 400 },
+                position: { x: 450, y: 500 },
                 data: {
-                    label: 'Disengaged',
+                    label: 'Bounced (Welcome)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '9',
+                type: 'end',
+                position: { x: 850, y: 250 },
+                data: {
+                    label: 'Bounced (Product)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '10',
+                type: 'end',
+                position: { x: 850, y: 600 },
+                data: {
+                    label: 'Bounced (Follow-up)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '11',
+                type: 'end',
+                position: { x: 1250, y: 400 },
+                data: {
+                    label: 'Disengaged (No Click)',
                     config: { isGoal: false },
                     stats: { processed: 0, dropped: 0 }
                 }
@@ -160,12 +169,13 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
         ],
         edges: [
             createEdge('1', '2'),
-            createEdge('2', '3'),
-            createEdge('3', '4'),
-            createEdge('4', '5', 'yes'),
-            createEdge('4', '6', 'no'),
+            createEdge('2', '5', 'open'), // Welcome -> Open -> Product Showcase
+            createEdge('2', '8', 'drop'), // Welcome -> Drop -> Bounced
+            createEdge('2', '6', 'default'), // Welcome -> Else (No Open) -> Follow-up
             createEdge('5', '7'),
-            createEdge('6', '8')
+            createEdge('5', '9', 'drop'), // Product Showcase -> Drop -> Bounced
+            createEdge('6', '11', 'default'), // Follow-up -> Else (No Click) -> Disengaged
+            createEdge('6', '10', 'drop') // Follow-up -> Drop -> Bounced
         ]
     },
     {
@@ -189,7 +199,7 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
                 position: { x: 450, y: 250 },
                 data: {
                     label: 'Wait 1 Hour',
-                    config: { waitMode: 'duration', waitDuration: 1, waitUnit: 'hours' },
+                    config: { waitDays: 0, waitUntilTime: '10:00' },
                     stats: { processed: 0, dropped: 0 }
                 }
             },
@@ -203,6 +213,8 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
                         emailSubject: 'You left something behind 👀',
                         emailPreheader: 'Complete your purchase now.',
                         sendMode: 'immediate',
+                        branchType: 'click', // Assuming click leads to purchase
+                        timeout: 24,
                         emailBody: createEmailHtml(
                             'Did you forget something?',
                             'Hi {{user.firstName}}, we noticed you left some great items in your cart. They are reserved for you for a limited time.',
@@ -213,19 +225,9 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
                 }
             },
             {
-                id: '4',
-                type: 'wait',
-                position: { x: 1250, y: 250 },
-                data: {
-                    label: 'Wait 24 Hours',
-                    config: { waitMode: 'duration', waitDuration: 24, waitUnit: 'hours' },
-                    stats: { processed: 0, dropped: 0 }
-                }
-            },
-            {
                 id: '5',
                 type: 'split',
-                position: { x: 1650, y: 250 },
+                position: { x: 1250, y: 250 },
                 data: {
                     label: 'Purchased?',
                     config: {
@@ -241,7 +243,7 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '6',
                 type: 'end',
-                position: { x: 2050, y: 100 },
+                position: { x: 1650, y: 100 },
                 data: {
                     label: 'Recovered (Success)',
                     config: { isGoal: true },
@@ -251,13 +253,15 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '7',
                 type: 'email',
-                position: { x: 2050, y: 400 },
+                position: { x: 1650, y: 400 },
                 data: {
                     label: 'Last Chance: 10% Off',
                     config: {
                         emailSubject: 'Take 10% off your cart 🎁',
                         emailPreheader: 'Use code SAVE10 at checkout.',
                         sendMode: 'immediate',
+                        branchType: 'click',
+                        timeout: 24,
                         emailBody: createEmailHtml(
                             'Here is 10% off!',
                             'Still thinking about it? Use code <b>SAVE10</b> to get 10% off your entire order. This offer expires in 24 hours.',
@@ -270,9 +274,49 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '8',
                 type: 'end',
-                position: { x: 2450, y: 400 },
+                position: { x: 850, y: 500 },
                 data: {
-                    label: 'Lost Lead',
+                    label: 'Lost (No Click)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '9',
+                type: 'end',
+                position: { x: 1650, y: 600 },
+                data: {
+                    label: 'Lost (Last Chance Ignored)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '10',
+                type: 'end',
+                position: { x: 2050, y: 400 },
+                data: {
+                    label: 'Lost (Final)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '11',
+                type: 'end',
+                position: { x: 850, y: 100 },
+                data: {
+                    label: 'Bounced (Reminder)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '12',
+                type: 'end',
+                position: { x: 1650, y: 250 },
+                data: {
+                    label: 'Bounced (Last Chance)',
                     config: { isGoal: false },
                     stats: { processed: 0, dropped: 0 }
                 }
@@ -281,11 +325,14 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
         edges: [
             createEdge('1', '2'),
             createEdge('2', '3'),
-            createEdge('3', '4'),
-            createEdge('4', '5'),
+            createEdge('3', '5', 'click'), // Reminder -> Click -> Purchased? Check
+            createEdge('3', '8', 'default'),  // Reminder -> Else -> Lost (No Click)
+            createEdge('3', '11', 'drop'), // Reminder -> Drop -> Bounced
             createEdge('5', '6', 'yes'),
             createEdge('5', '7', 'no'),
-            createEdge('7', '8')
+            createEdge('7', '10', 'click'), // Last Chance -> Click -> Lost (Final) (Wait, if click, maybe success? Or just end?)
+            createEdge('7', '9', 'default'),    // Last Chance -> Else -> Lost (Ignored)
+            createEdge('7', '12', 'drop')   // Last Chance -> Drop -> Bounced
         ]
     },
     {
@@ -313,6 +360,8 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
                         emailSubject: 'It\'s been a while... 🥺',
                         emailPreheader: 'Come see what\'s new.',
                         sendMode: 'immediate',
+                        branchType: 'open',
+                        timeout: 72, // 3 Days
                         emailBody: createEmailHtml(
                             'We miss you!',
                             'Hi {{user.firstName}}, it has been a while since we last saw you. We have added a lot of new features that we think you will love.',
@@ -323,41 +372,17 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
                 }
             },
             {
-                id: '3',
-                type: 'wait',
-                position: { x: 850, y: 250 },
-                data: {
-                    label: 'Wait 3 Days',
-                    config: { waitMode: 'duration', waitDuration: 3, waitUnit: 'days' },
-                    stats: { processed: 0, dropped: 0 }
-                }
-            },
-            {
-                id: '4',
-                type: 'split',
-                position: { x: 1250, y: 250 },
-                data: {
-                    label: 'Clicked Link?',
-                    config: {
-                        splitType: 'behavior',
-                        branches: [
-                            { id: 'yes', label: 'Clicked', conditions: [{ id: 'c1', field: 'email_click', operator: 'equals', value: 'true' }] },
-                            { id: 'no', label: 'Did Not Click', conditions: [] }
-                        ]
-                    },
-                    stats: { processed: 0, dropped: 0 }
-                }
-            },
-            {
                 id: '5',
                 type: 'email',
-                position: { x: 1650, y: 100 },
+                position: { x: 850, y: 100 },
                 data: {
                     label: 'Welcome Back Offer',
                     config: {
                         emailSubject: 'Here is a special gift 🎁',
                         emailPreheader: 'Thanks for coming back.',
                         sendMode: 'immediate',
+                        branchType: 'click',
+                        timeout: 48,
                         emailBody: createEmailHtml(
                             'Welcome Back!',
                             'We are so happy to see you again. As a token of our appreciation, here is a 20% discount on your next purchase.',
@@ -370,7 +395,7 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '6',
                 type: 'end',
-                position: { x: 2050, y: 100 },
+                position: { x: 1250, y: 100 },
                 data: {
                     label: 'Re-engaged (Success)',
                     config: { isGoal: true },
@@ -380,9 +405,39 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
             {
                 id: '7',
                 type: 'end',
-                position: { x: 1650, y: 400 },
+                position: { x: 450, y: 500 },
                 data: {
-                    label: 'Churned / Unsubscribe',
+                    label: 'Churned (No Open)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '9',
+                type: 'end',
+                position: { x: 850, y: 400 },
+                data: {
+                    label: 'Churned (Offer Ignored)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '10',
+                type: 'end',
+                position: { x: 450, y: 100 },
+                data: {
+                    label: 'Bounced (Miss You)',
+                    config: { isGoal: false },
+                    stats: { processed: 0, dropped: 0 }
+                }
+            },
+            {
+                id: '11',
+                type: 'end',
+                position: { x: 850, y: 600 },
+                data: {
+                    label: 'Bounced (Offer)',
                     config: { isGoal: false },
                     stats: { processed: 0, dropped: 0 }
                 }
@@ -390,11 +445,12 @@ export const JOURNEY_TEMPLATES: JourneyTemplate[] = [
         ],
         edges: [
             createEdge('1', '2'),
-            createEdge('2', '3'),
-            createEdge('3', '4'),
-            createEdge('4', '5', 'yes'),
-            createEdge('4', '7', 'no'),
-            createEdge('5', '6')
+            createEdge('2', '5', 'open'), // We Miss You -> Open -> Welcome Back Offer
+            createEdge('2', '7', 'default'), // We Miss You -> Else -> Churned (No Open)
+            createEdge('2', '10', 'drop'), // We Miss You -> Drop -> Bounced
+            createEdge('5', '6', 'click'), // Welcome Back Offer -> Click -> Re-engaged
+            createEdge('5', '9', 'default'),  // Welcome Back Offer -> Else -> Churned (Offer Ignored)
+            createEdge('5', '11', 'drop') // Welcome Back Offer -> Drop -> Bounced
         ]
     }
 ];

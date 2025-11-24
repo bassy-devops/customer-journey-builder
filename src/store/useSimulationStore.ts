@@ -8,8 +8,12 @@ interface SimulationState {
     startTime: number;
     currentTime: number;
     activeUsers: Map<string, number>; // NodeID -> UserCount
-    waitingUsers: Map<string, Array<{ count: number; releaseTime: number }>>; // NodeID -> Queue
+    waitingUsers: Map<string, Array<{ count: number; releaseTime: number; outcome?: string }>>; // NodeID -> Queue
     logs: Array<{ tick: number; nodeId: string; message: string }>;
+
+    isDryRunMode: boolean;
+    enterDryRun: (settings: DryRunSettings) => void;
+    exitDryRun: () => void;
 
     startSimulation: () => void;
     pauseSimulation: () => void;
@@ -17,13 +21,19 @@ interface SimulationState {
     setSpeed: (speed: number) => void;
     incrementTick: (tickDuration: number) => void;
     updateActiveUsers: (nodeId: string, count: number) => void;
-    addWaitingUsers: (nodeId: string, count: number, releaseTime: number) => void;
-    processWaitingUsers: (nodeId: string, currentTime: number) => number;
+    addWaitingUsers: (nodeId: string, count: number, releaseTime: number, outcome?: string) => void;
+    processWaitingUsers: (nodeId: string, currentTime: number) => Array<{ count: number; outcome?: string }>;
     addLog: (nodeId: string, message: string) => void;
     resetSimulation: () => void;
 }
 
+export interface DryRunSettings {
+    startDate: string; // ISO string
+    initialUsers: number;
+}
+
 export const useSimulationStore = create<SimulationState>((set, get) => ({
+    isDryRunMode: false,
     isRunning: false,
     isPaused: false,
     speed: 1,
@@ -33,6 +43,27 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     activeUsers: new Map(),
     waitingUsers: new Map(),
     logs: [],
+
+    enterDryRun: (settings) => {
+        const startTime = new Date(settings.startDate).getTime();
+        set({
+            isDryRunMode: true,
+            startTime,
+            currentTime: startTime,
+            tick: 0,
+            activeUsers: new Map(),
+            waitingUsers: new Map(),
+            logs: []
+        });
+    },
+
+    exitDryRun: () => {
+        set({
+            isDryRunMode: false,
+            isRunning: false,
+            isPaused: false
+        });
+    },
 
     startSimulation: () => {
         const now = Date.now();
@@ -59,26 +90,26 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
             return { activeUsers: newActiveUsers };
         });
     },
-    addWaitingUsers: (nodeId, count, releaseTime) => {
+    addWaitingUsers: (nodeId, count, releaseTime, outcome) => {
         set((state) => {
             const newWaitingUsers = new Map(state.waitingUsers);
             const queue = newWaitingUsers.get(nodeId) || [];
-            queue.push({ count, releaseTime });
+            queue.push({ count, releaseTime, outcome });
             newWaitingUsers.set(nodeId, queue);
             return { waitingUsers: newWaitingUsers };
         });
     },
     processWaitingUsers: (nodeId, currentTime) => {
-        let releasedCount = 0;
+        const releasedItems: Array<{ count: number; outcome?: string }> = [];
         set((state) => {
             const newWaitingUsers = new Map(state.waitingUsers);
             const queue = newWaitingUsers.get(nodeId) || [];
 
-            const remainingQueue: Array<{ count: number; releaseTime: number }> = [];
+            const remainingQueue: Array<{ count: number; releaseTime: number; outcome?: string }> = [];
 
             queue.forEach((item) => {
                 if (item.releaseTime <= currentTime) {
-                    releasedCount += item.count;
+                    releasedItems.push({ count: item.count, outcome: item.outcome });
                 } else {
                     remainingQueue.push(item);
                 }
@@ -92,7 +123,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
 
             return { waitingUsers: newWaitingUsers };
         });
-        return releasedCount;
+        return releasedItems;
     },
     addLog: (nodeId, message) => {
         set((state) => ({

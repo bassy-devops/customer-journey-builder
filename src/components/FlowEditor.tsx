@@ -9,6 +9,7 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { useStore } from '../store/useStore';
+import { useSimulationStore } from '../store/useSimulationStore';
 import { EntryNode } from './nodes/EntryNode';
 import { EmailNode } from './nodes/EmailNode';
 import { SplitNode } from './nodes/SplitNode';
@@ -42,14 +43,17 @@ const FlowEditorContent = () => {
         addNode,
         setSelectedNodeId,
     } = useStore();
+    const { isDryRunMode } = useSimulationStore();
 
     const onDragOver = useCallback((event: React.DragEvent) => {
+        if (isDryRunMode) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
-    }, []);
+    }, [isDryRunMode]);
 
     const onDrop = useCallback(
         (event: React.DragEvent) => {
+            if (isDryRunMode) return;
             event.preventDefault();
 
             const type = event.dataTransfer.getData('application/reactflow');
@@ -76,7 +80,7 @@ const FlowEditorContent = () => {
 
             addNode(newNode);
         },
-        [screenToFlowPosition, addNode]
+        [screenToFlowPosition, addNode, isDryRunMode]
     );
 
     const onNodeClick = useCallback((_: React.MouseEvent, node: any) => {
@@ -88,13 +92,16 @@ const FlowEditorContent = () => {
     }, [setSelectedNodeId]);
 
     return (
-        <div className={styles.wrapper} ref={reactFlowWrapper}>
+        <div className={`${styles.wrapper} ${isDryRunMode ? styles.dryRun : ''}`} ref={reactFlowWrapper}>
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
+                onNodesChange={isDryRunMode ? undefined : onNodesChange}
+                onEdgesChange={isDryRunMode ? undefined : onEdgesChange}
+                onConnect={isDryRunMode ? undefined : onConnect}
+                nodesDraggable={!isDryRunMode}
+                nodesConnectable={!isDryRunMode}
+                elementsSelectable={true}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 defaultEdgeOptions={{ type: 'default' }}

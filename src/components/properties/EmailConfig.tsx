@@ -49,13 +49,16 @@ const EMAIL_TEMPLATES = [
     }
 ];
 
+import { useSimulationStore } from '../../store/useSimulationStore';
+
+// ...
+
 export const EmailConfig = ({ data, onChange }: Props) => {
+    const { isDryRunMode } = useSimulationStore();
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [testEmail, setTestEmail] = useState('');
     const [isSending, setIsSending] = useState(false);
-
     const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
-
     const handleTestSend = () => {
         if (!testEmail) return;
         setIsSending(true);
@@ -82,9 +85,103 @@ export const EmailConfig = ({ data, onChange }: Props) => {
         }, 1000);
     };
 
+    if (isDryRunMode) {
+        return (
+            <div className={styles.section}>
+                <div className={styles.sectionTitle}>Simulation Settings</div>
+                <div className={styles.field}>
+                    <label className={styles.label}>Fixed Drop Rate (%)</label>
+                    <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        className={styles.input}
+                        value={data.config.simulation?.fixedDropRate ?? 5}
+                        placeholder="Default: 5%"
+                        onChange={(e) => {
+                            const val = e.target.value === '' ? undefined : Number(e.target.value);
+                            onChange('simulation', { ...data.config.simulation, fixedDropRate: val });
+                        }}
+                    />
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
+                        Simulates bounces/invalid emails (Immediate drop).
+                    </div>
+                </div>
+
+                {data.config.branchType === 'open' && (
+                    <div className={styles.field}>
+                        <label className={styles.label}>Open Rate (%)</label>
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            className={styles.input}
+                            value={data.config.simulation?.openRate ?? ''}
+                            placeholder="Default: 20-40%"
+                            onChange={(e) => {
+                                const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                onChange('simulation', { ...data.config.simulation, openRate: val });
+                            }}
+                        />
+                    </div>
+                )}
+
+                {data.config.branchType === 'click' && (
+                    <div className={styles.field}>
+                        <label className={styles.label}>Click Rate (%)</label>
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            className={styles.input}
+                            value={data.config.simulation?.clickRate ?? ''}
+                            placeholder="Default: 2-10%"
+                            onChange={(e) => {
+                                const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                onChange('simulation', { ...data.config.simulation, clickRate: val });
+                            }}
+                        />
+                    </div>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className={styles.section}>
             <div className={styles.sectionTitle}>Email Settings</div>
+
+            <div className={styles.field}>
+                <label className={styles.label}>Branching Logic</label>
+                <select
+                    className={styles.select}
+                    value={data.config.branchType || 'sent'}
+                    onChange={(e) => onChange('branchType', e.target.value)}
+                >
+                    <option value="sent">Sent (Default)</option>
+                    <option value="open">Opened</option>
+                    <option value="click">Clicked</option>
+                </select>
+                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
+                    Determines which action triggers the next step.
+                </div>
+            </div>
+
+            {(data.config.branchType === 'open' || data.config.branchType === 'click') && (
+                <div className={styles.field}>
+                    <label className={styles.label}>Timeout (Hours)</label>
+                    <input
+                        type="number"
+                        min="1"
+                        className={styles.input}
+                        value={data.config.timeout || 24}
+                        onChange={(e) => onChange('timeout', Number(e.target.value))}
+                    />
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-secondary)', marginTop: '0.25rem' }}>
+                        Wait time for user to perform action before dropping.
+                    </div>
+                </div>
+            )}
 
             <div className={styles.field}>
                 <label className={styles.label}>Send Timing</label>

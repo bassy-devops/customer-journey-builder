@@ -1,13 +1,17 @@
 import { useRef, useState } from 'react';
-import { Download, Upload, FileText, X } from 'lucide-react';
+import { Download, Upload, FileText, X, Play } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { useSimulationStore } from '../store/useSimulationStore';
 import { JOURNEY_TEMPLATES } from '../data/journeyTemplates';
+import { DryRunSettingsModal } from './modals/DryRunSettingsModal';
 import styles from './FlowActions.module.css';
 
 export const FlowActions = () => {
     const { exportFlow, importFlow } = useStore();
+    const { isDryRunMode } = useSimulationStore();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showTemplates, setShowTemplates] = useState(false);
+    const [showDryRunModal, setShowDryRunModal] = useState(false);
 
     const handleExport = () => {
         const flowJson = exportFlow();
@@ -56,8 +60,22 @@ export const FlowActions = () => {
         }
     };
 
+    if (isDryRunMode) {
+        return null; // Hide actions during Dry Run
+    }
+
     return (
         <div className={styles.actions}>
+            <button
+                className={styles.button}
+                onClick={() => setShowDryRunModal(true)}
+                title="Dry Run"
+                style={{ backgroundColor: '#10b981', color: 'white', border: 'none' }}
+            >
+                <Play size={16} />
+                <span>Dry Run</span>
+            </button>
+            <div className={styles.divider} style={{ width: '1px', height: '24px', background: 'var(--color-border)', margin: '0 8px' }}></div>
             <button
                 className={styles.button}
                 onClick={() => setShowTemplates(true)}
@@ -83,6 +101,10 @@ export const FlowActions = () => {
                 onChange={handleFileChange}
                 style={{ display: 'none' }}
             />
+
+            {showDryRunModal && (
+                <DryRunSettingsModal onClose={() => setShowDryRunModal(false)} />
+            )}
 
             {showTemplates && (
                 <div style={{

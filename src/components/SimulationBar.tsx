@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Play, Pause, Square, FastForward } from 'lucide-react';
+import { Play, Pause, Square, FastForward, X } from 'lucide-react';
 import { useSimulationStore } from '../store/useSimulationStore';
 import { processTick, TICK_DURATION } from '../utils/simulationEngine';
 import { useStore } from '../store/useStore';
@@ -17,7 +17,8 @@ export const SimulationBar = () => {
         pauseSimulation,
         stopSimulation,
         setSpeed,
-        incrementTick
+        incrementTick,
+        exitDryRun
     } = useSimulationStore();
 
     const { nodes, edges, resetStats } = useStore();
@@ -52,6 +53,12 @@ export const SimulationBar = () => {
     const handleStop = () => {
         stopSimulation();
         resetStats();
+    };
+
+    const handleExit = () => {
+        stopSimulation();
+        resetStats();
+        exitDryRun();
     };
 
     return (
@@ -157,6 +164,17 @@ export const SimulationBar = () => {
                     <span className={styles.value}>{tick}</span>
                 </div>
             </div>
+
+            <div className={styles.divider} />
+
+            <button
+                className={styles.button}
+                onClick={handleExit}
+                title="Exit Dry Run"
+                style={{ color: '#ef4444' }}
+            >
+                <X size={20} />
+            </button>
         </div>
     );
 };

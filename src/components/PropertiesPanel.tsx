@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useStore } from '../store/useStore';
+import { useSimulationStore } from '../store/useSimulationStore';
 import { EntryConfig } from './properties/EntryConfig';
 import { EmailConfig } from './properties/EmailConfig';
 import { WaitConfig } from './properties/WaitConfig';
@@ -12,6 +13,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export const PropertiesPanel = () => {
     const { nodes, edges, selectedNodeId, selectedEdgeId, updateNodeData, updateEdgeData, isPropertiesPanelOpen, setPropertiesPanelOpen } = useStore();
+    const { isDryRunMode } = useSimulationStore();
     const selectedNode = nodes.find((n: any) => n.id === selectedNodeId);
     const selectedEdge = edges.find((e: any) => e.id === selectedEdgeId);
     const [width, setWidth] = useState(300);
@@ -111,47 +113,51 @@ export const PropertiesPanel = () => {
                                 <div>Select a node or connector to edit properties</div>
                             </div>
                         ) : selectedEdge ? (
-                            <>
-                                <div className={styles.header}>
-                                    <h2 className={styles.title}>Properties</h2>
-                                    <div className={styles.subtitle}>Connector</div>
-                                </div>
-                                <div className={styles.content}>
-                                    <div className={commonStyles.section}>
-                                        <div className={commonStyles.sectionTitle}>General</div>
-                                        <div className={commonStyles.field}>
-                                            <label className={commonStyles.label}>Label</label>
-                                            <input
-                                                type="text"
-                                                value={(selectedEdge.label as string) || ''}
-                                                onChange={handleEdgeLabelChange}
-                                                className={commonStyles.input}
-                                                placeholder="Enter connector label..."
-                                            />
+                            !isDryRunMode && (
+                                <>
+                                    <div className={styles.header}>
+                                        <h2 className={styles.title}>Properties</h2>
+                                        <div className={styles.subtitle}>Connector</div>
+                                    </div>
+                                    <div className={styles.content}>
+                                        <div className={commonStyles.section}>
+                                            <div className={commonStyles.sectionTitle}>General</div>
+                                            <div className={commonStyles.field}>
+                                                <label className={commonStyles.label}>Label</label>
+                                                <input
+                                                    type="text"
+                                                    value={(selectedEdge.label as string) || ''}
+                                                    onChange={handleEdgeLabelChange}
+                                                    className={commonStyles.input}
+                                                    placeholder="Enter connector label..."
+                                                />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </>
+                                </>
+                            )
                         ) : (
                             <>
                                 <div className={styles.header}>
-                                    <h2 className={styles.title}>Properties</h2>
+                                    <h2 className={styles.title}>{isDryRunMode ? 'Simulation Settings' : 'Properties'}</h2>
                                     <div className={styles.subtitle}>{selectedNode?.type} Node</div>
                                 </div>
 
                                 <div className={styles.content}>
-                                    <div className={commonStyles.section}>
-                                        <div className={commonStyles.sectionTitle}>General</div>
-                                        <div className={commonStyles.field}>
-                                            <label className={commonStyles.label}>Label</label>
-                                            <input
-                                                type="text"
-                                                value={(selectedNode?.data.label as string) || ''}
-                                                onChange={handleLabelChange}
-                                                className={commonStyles.input}
-                                            />
+                                    {!isDryRunMode && (
+                                        <div className={commonStyles.section}>
+                                            <div className={commonStyles.sectionTitle}>General</div>
+                                            <div className={commonStyles.field}>
+                                                <label className={commonStyles.label}>Label</label>
+                                                <input
+                                                    type="text"
+                                                    value={(selectedNode?.data.label as string) || ''}
+                                                    onChange={handleLabelChange}
+                                                    className={commonStyles.input}
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
 
                                     {renderConfig()}
                                 </div>

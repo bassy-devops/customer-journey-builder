@@ -3,45 +3,89 @@ import { Position, Handle } from '@xyflow/react';
 import { MessageSquare } from 'lucide-react';
 import { BaseNode } from './BaseNode';
 
-export const EmailNode = memo((props: any) => {
-    const outcomes = [
-        { id: 'default', label: 'Next', color: 'var(--color-text-primary)' },
-        { id: 'open', label: 'Open', color: '#22c55e' },
-        { id: 'click', label: 'Click', color: '#3b82f6' },
-        { id: 'drop', label: 'Drop', color: '#ef4444' }
-    ];
-
+export const EmailNode = memo(({ data, ...props }: any) => {
     return (
         <BaseNode
             {...props}
+            data={data}
             title="Email"
             icon={<MessageSquare size={14} />}
             handles={[
                 { type: 'target', position: Position.Left },
             ]}
         >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.5rem' }}>
-                {outcomes.map((outcome) => (
-                    <div key={outcome.id} style={{
-                        position: 'relative',
-                        textAlign: 'right',
-                        fontSize: '0.75rem',
-                        height: '20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        color: outcome.color,
-                        fontWeight: 500
-                    }}>
-                        <span>{outcome.label}</span>
-                        <Handle
-                            type="source"
-                            position={Position.Right}
-                            id={outcome.id}
-                            style={{ top: '50%', right: '-23px', background: outcome.color === 'var(--color-text-primary)' ? '#777' : outcome.color }}
-                        />
-                    </div>
-                ))}
+            {/* Dynamic Handles based on Branch Type */}
+            {(!data.config.branchType || data.config.branchType === 'sent') && (
+                <Handle
+                    type="source"
+                    position={Position.Right}
+                    id="default"
+                    style={{ top: '50%' }}
+                />
+            )}
+
+            {data.config.branchType === 'open' && (
+                <>
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="open"
+                        style={{ top: '30%', background: 'var(--color-primary)' }}
+                    />
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="default"
+                        style={{ top: '70%' }}
+                    />
+                </>
+            )}
+
+            {data.config.branchType === 'click' && (
+                <>
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="click"
+                        style={{ top: '30%', background: 'var(--color-success)' }}
+                    />
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id="default"
+                        style={{ top: '70%' }}
+                    />
+                </>
+            )}
+
+            <Handle
+                type="source"
+                position={Position.Bottom}
+                id="drop"
+                style={{ background: 'var(--color-error)' }}
+            />
+
+            {/* Labels for handles */}
+            <div style={{ position: 'absolute', right: '-40px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.6rem', color: 'var(--color-text-secondary)', pointerEvents: 'none' }}>
+                {(!data.config.branchType || data.config.branchType === 'sent') && 'Next'}
+            </div>
+
+            {data.config.branchType === 'open' && (
+                <>
+                    <div style={{ position: 'absolute', right: '-40px', top: '30%', transform: 'translateY(-50%)', fontSize: '0.6rem', color: 'var(--color-text-secondary)', pointerEvents: 'none' }}>Open</div>
+                    <div style={{ position: 'absolute', right: '-40px', top: '70%', transform: 'translateY(-50%)', fontSize: '0.6rem', color: 'var(--color-text-secondary)', pointerEvents: 'none' }}>Else</div>
+                </>
+            )}
+
+            {data.config.branchType === 'click' && (
+                <>
+                    <div style={{ position: 'absolute', right: '-40px', top: '30%', transform: 'translateY(-50%)', fontSize: '0.6rem', color: 'var(--color-text-secondary)', pointerEvents: 'none' }}>Click</div>
+                    <div style={{ position: 'absolute', right: '-40px', top: '70%', transform: 'translateY(-50%)', fontSize: '0.6rem', color: 'var(--color-text-secondary)', pointerEvents: 'none' }}>Else</div>
+                </>
+            )}
+
+            <div style={{ position: 'absolute', bottom: '-20px', left: '50%', transform: 'translateX(-50%)', fontSize: '0.6rem', color: 'var(--color-error)', pointerEvents: 'none' }}>
+                Drop
             </div>
         </BaseNode>
     );

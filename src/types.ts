@@ -35,6 +35,10 @@ export interface NodeConfig {
     sendMode?: 'immediate' | 'scheduled';
     sendTime?: string; // HH:mm format
 
+    // Email Branching
+    branchType?: 'sent' | 'open' | 'click'; // Default: 'sent'
+    timeout?: number; // Hours to wait for open/click. Default: 24
+
     // Split
     splitType?: 'random' | 'attribute' | 'behavior';
     splitRatio?: number[]; // e.g. [50, 50]
@@ -51,12 +55,18 @@ export interface NodeConfig {
     }[];
 
     // Wait
-    waitMode?: 'duration' | 'until-time';
-    waitDuration?: number;
-    waitUnit?: 'minutes' | 'hours' | 'days' | 'weeks';
+    // waitMode is always 'until-time' now
+    waitDays?: number; // Number of days to wait before the target time
     waitUntilTime?: string; // HH:mm format
     // End
     isGoal?: boolean;
+
+    // Simulation Settings (Dry Run)
+    simulation?: {
+        openRate?: number; // 0-100
+        clickRate?: number; // 0-100
+        fixedDropRate?: number; // Default: 5
+    };
 }
 
 export interface NodeStats {
@@ -67,6 +77,7 @@ export interface NodeStats {
     clickRate?: number;
     completionRate?: number;
     nextReleaseTime?: number;
+    waitingBreakdown?: { label: string; count: number }[];
 }
 
 export interface NodeData extends Record<string, unknown> {

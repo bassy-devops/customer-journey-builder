@@ -65,35 +65,38 @@ export const processTick = () => {
         }
     };
 
-    // Calculate total entries for completion rate
-    const totalEntries = nodes
-        .filter(n => n.type === 'entry')
-        .reduce((sum, n) => sum + (n.data.stats.processed || 0), 0);
+
 
     // 2b. Release users from wait nodes (and scheduled email nodes)
     const waitNodes = nodes.filter((n) => n.type === 'wait' || (n.type === 'email' && n.data.config.sendMode === 'scheduled'));
     waitNodes.forEach((node) => {
-        const releasedUsers = processWaitingUsers(node.id, currentTime);
-        if (releasedUsers > 0) {
-            const outgoers = getOutgoers(node.id, nodes, edges);
-            if (outgoers.length > 0) {
-                outgoers.forEach((target) => {
-                    const currentTargetCount = nextActiveUsers.get(target.id) || 0;
-                    nextActiveUsers.set(target.id, currentTargetCount + releasedUsers);
-                    addLog(node.id, `Released ${releasedUsers} users after waiting to ${target.id}`);
+        // 1. Process Wait Nodes
+        if (node.type === 'wait') {
+            const releasedItems = processWaitingUsers(node.id, currentTime);
+            if (releasedItems.length > 0) {
+                const outgoers = getOutgoers(node.id, nodes, edges);
 
-                    const newTargetProcessed = (target.data.stats.processed || 0) + releasedUsers;
-                    updateNodeData(target.id, { stats: { ...target.data.stats, processed: newTargetProcessed } });
-
-                    // Update edge stats
-                    // For wait node, source total is total processed by wait node
-                    // Note: processed count includes all users who entered the node.
-                    const sourceTotal = (node.data.stats.processed || 0);
-                    updateEdgeStats(node.id, target.id, releasedUsers, sourceTotal);
+                let totalReleased = 0;
+                releasedItems.forEach(item => {
+                    totalReleased += item.count;
                 });
 
+                if (outgoers.length > 0) {
+                    outgoers.forEach((target) => {
+                        const currentTargetCount = nextActiveUsers.get(target.id) || 0;
+                        nextActiveUsers.set(target.id, currentTargetCount + totalReleased);
+
+                        const newTargetProcessed = (target.data.stats.processed || 0) + totalReleased;
+                        updateNodeData(target.id, { stats: { ...target.data.stats, processed: newTargetProcessed } });
+
+                        // Update edge stats
+                        const sourceTotal = (node.data.stats.processed || 0);
+                        updateEdgeStats(node.id, target.id, totalReleased, sourceTotal);
+                    });
+                }
+
                 const currentWaiting = node.data.stats.waiting || 0;
-                updateNodeData(node.id, { stats: { ...node.data.stats, waiting: Math.max(0, currentWaiting - releasedUsers) } });
+                updateNodeData(node.id, { stats: { ...node.data.stats, waiting: Math.max(0, currentWaiting - totalReleased) } });
             }
         }
     });
@@ -139,15 +142,8 @@ export const processTick = () => {
             // End of journey
             nextActiveUsers.set(nodeId, 0);
 
-            // If End node, update completion rate
-            if (node.type === 'end') {
-                const currentProcessed = (node.data.stats.processed || 0); // Already updated when entering? No, updated below.
-                // Wait, stats are updated when ENTERING a node. So current stats.processed is correct.
-                // But we are processing active users AT the node.
-                // Actually, completion rate should be calculated based on total entries.
-                const completionRate = totalEntries > 0 ? Math.round((currentProcessed / totalEntries) * 100) : 0;
-                updateNodeData(node.id, { stats: { ...node.data.stats, completionRate } });
-            }
+            // End of journey
+            nextActiveUsers.set(nodeId, 0);
             return;
         }
 
@@ -214,8 +210,8 @@ export const processTick = () => {
                 }
 
                 usersToMove = userCount;
-                const openRate = Math.floor(Math.random() * (40 - 20 + 1)) + 20;
-                const clickRate = Math.floor(Math.random() * (10 - 2 + 1)) + 2;
+                const openRate = node.data.config.simulation?.openRate ?? 20;
+                const clickRate = node.data.config.simulation?.clickRate ?? 3;
                 updateNodeData(node.id, {
                     stats: {
                         ...node.data.stats,
@@ -225,43 +221,72 @@ export const processTick = () => {
                 });
                 break;
             case 'wait':
-                // ... (Wait logic handled above, but if active users are here, they need to be queued)
-                const waitMode = node.data.config.waitMode || 'duration';
-                let releaseTime: number;
+                // Wait Mode is always 'until-time' now
+                // Config: waitDays (default 1), waitUntilTime (default 09:00)
+                const waitDays = node.data.config.waitDays !== undefined ? node.data.config.waitDays : 1;
+                const untilTime = node.data.config.waitUntilTime || '09:00';
+                const [hours, minutes] = untilTime.split(':').map(Number);
 
-                if (waitMode === 'duration') {
-                    const duration = node.data.config.waitDuration || 1;
-                    const unit = node.data.config.waitUnit || 'hours';
-                    let durationMs = duration * 3600000;
+                const currentDate = new Date(currentTime);
+                const targetDate = new Date(currentTime);
+                targetDate.setHours(hours, minutes, 0, 0);
 
-                    if (unit === 'minutes') durationMs = duration * 60000;
-                    if (unit === 'days') durationMs = duration * 86400000;
-                    if (unit === 'weeks') durationMs = duration * 604800000;
+                // If target time is today and we haven't passed it yet, and waitDays is 0, release today.
+                // If target time is passed, or waitDays > 0, add days.
 
-                    releaseTime = currentTime + durationMs;
+                if (waitDays === 0) {
+                    if (targetDate.getTime() <= currentDate.getTime()) {
+                        // Already passed time today, so wait until tomorrow (effectively waitDays=1 behavior if 0 missed)
+                        // OR should it be "next occurrence"? 
+                        // If waitDays=0, it means "Today at X". If missed, it's too late? 
+                        // Usually "Wait 0 days" means "Wait until time T today". If T passed, wait until T tomorrow.
+                        targetDate.setDate(targetDate.getDate() + 1);
+                    }
                 } else {
-                    const untilTime = node.data.config.waitUntilTime || '09:00';
-                    const [hours, minutes] = untilTime.split(':').map(Number);
+                    // Add waitDays.
+                    // Example: Current = Mon 10:00. Wait 1 Day at 09:00.
+                    // Target = Mon 09:00. +1 Day = Tue 09:00. Correct.
+                    // Example: Current = Mon 08:00. Wait 1 Day at 09:00.
+                    // Target = Mon 09:00. +1 Day = Tue 09:00. Correct.
+                    // Wait, "Wait 1 Day" usually means "Tomorrow".
+                    targetDate.setDate(targetDate.getDate() + waitDays);
 
-                    const currentDate = new Date(currentTime);
-                    const targetDate = new Date(currentTime);
-                    targetDate.setHours(hours, minutes, 0, 0);
-
+                    // If we are strictly calculating "Next Occurrence" + Days:
+                    // If target time <= current time, we are already "past" the base time for today.
+                    // But "Wait 1 Day" implies +24h roughly. 
+                    // Let's stick to: Base Date = Today. Target = Base + Days. Set Time.
+                    // If Result <= Current, Add 1 Day (to ensure future).
                     if (targetDate.getTime() <= currentDate.getTime()) {
                         targetDate.setDate(targetDate.getDate() + 1);
                     }
-
-                    releaseTime = targetDate.getTime();
                 }
+
+                const releaseTime = targetDate.getTime();
 
                 addWaitingUsers(node.id, userCount, releaseTime);
                 nextActiveUsers.set(nodeId, 0);
-                addLog(node.id, `Holding ${userCount} users (${waitMode})`);
+                addLog(node.id, `Holding ${userCount} users until ${new Date(releaseTime).toLocaleString()}`);
+
+                // Calculate breakdown from the actual queue in store
+                const waitingQueue = useSimulationStore.getState().waitingUsers.get(node.id) || [];
+                const breakdownMap = new Map<string, number>();
+                let totalWaiting = 0;
+
+                waitingQueue.forEach(item => {
+                    const dateLabel = new Date(item.releaseTime).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                    breakdownMap.set(dateLabel, (breakdownMap.get(dateLabel) || 0) + item.count);
+                    totalWaiting += item.count;
+                });
+
+                const waitingBreakdown = Array.from(breakdownMap.entries())
+                    .map(([label, count]) => ({ label, count }));
+
                 updateNodeData(node.id, {
                     stats: {
                         ...node.data.stats,
-                        waiting: (node.data.stats.waiting || 0) + userCount,
-                        nextReleaseTime: releaseTime
+                        waiting: totalWaiting,
+                        nextReleaseTime: releaseTime,
+                        waitingBreakdown
                     }
                 });
                 return;
@@ -281,78 +306,93 @@ export const processTick = () => {
             if (node.type === 'email') {
                 // Email Branching Logic
                 // 1. Identify edges connected to 'open', 'click', 'drop', and 'default'
-                const openEdge = outEdges.find(e => e.sourceHandle === 'open');
-                const clickEdge = outEdges.find(e => e.sourceHandle === 'click');
                 const dropEdge = outEdges.find(e => e.sourceHandle === 'drop');
                 const defaultEdge = outEdges.find(e => e.sourceHandle === 'default' || !e.sourceHandle);
 
-                // Calculate counts based on rates
-                // Exclusive Branching:
-                // 1. Clickers: users * clickRate (subset of Openers)
-                // 2. Openers (Non-Clickers): (users * openRate) - Clickers
-                // 3. Droppers: users - Openers - Clickers (or users * (1 - openRate))
+                // Fixed Drop Rate (Bounce) - Default 5%
+                // This now goes strictly to the 'drop' handle
+                const fixedDropRate = (node.data.config.simulation?.fixedDropRate ?? 5) / 100;
+                const bounceCount = Math.round(usersToMove * fixedDropRate);
+                const activeUsersForBranching = usersToMove - bounceCount;
 
-                const totalOpenCount = Math.floor(usersToMove * ((node.data.stats.openRate || 20) / 100));
-                const clickCount = Math.floor(usersToMove * ((node.data.stats.clickRate || 5) / 100));
-
-                // Ensure clickCount doesn't exceed totalOpenCount
-                const actualClickCount = Math.min(clickCount, totalOpenCount);
-
-                // Openers who didn't click
-                const openCount = Math.max(0, totalOpenCount - actualClickCount);
-
-                // Droppers (didn't open)
-                const dropCount = Math.max(0, usersToMove - actualClickCount - openCount);
-
-                // Distribute
-                if (openEdge) {
-                    const target = nodes.find(n => n.id === openEdge.target);
-                    if (target) {
-                        const currentTargetCount = nextActiveUsers.get(target.id) || 0;
-                        nextActiveUsers.set(target.id, currentTargetCount + openCount);
-                        updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + openCount } });
-                        updateEdgeStats(nodeId, target.id, openCount, sourceTotalProcessed);
-                    }
-                }
-
-                if (clickEdge) {
-                    const target = nodes.find(n => n.id === clickEdge.target);
-                    if (target) {
-                        const currentTargetCount = nextActiveUsers.get(target.id) || 0;
-                        nextActiveUsers.set(target.id, currentTargetCount + clickCount);
-                        updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + clickCount } });
-                        updateEdgeStats(nodeId, target.id, clickCount, sourceTotalProcessed);
-                    }
-                }
-
+                // Process Bounces (Immediate Drop)
                 if (dropEdge) {
                     const target = nodes.find(n => n.id === dropEdge.target);
                     if (target) {
                         const currentTargetCount = nextActiveUsers.get(target.id) || 0;
-                        nextActiveUsers.set(target.id, currentTargetCount + dropCount);
-                        updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + dropCount } });
-                        updateEdgeStats(nodeId, target.id, dropCount, sourceTotalProcessed);
+                        nextActiveUsers.set(target.id, currentTargetCount + bounceCount);
+                        updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + bounceCount } });
+                        updateEdgeStats(nodeId, target.id, bounceCount, sourceTotalProcessed);
                     }
                 }
 
-                if (defaultEdge) {
-                    // If default exists, what do we send?
-                    // If other branches exist, maybe default gets nothing? Or remaining?
-                    // Let's say default gets everyone if no other branches, or "remainder" if others exist?
-                    // For simplicity, if default exists and others don't, it gets everyone.
-                    // If others exist, default is ignored? Or maybe "Sent" (everyone)?
-                    // Let's make default = everyone (Pass through) if used alone.
-                    if (!openEdge && !clickEdge && !dropEdge) {
-                        const target = nodes.find(n => n.id === defaultEdge.target);
-                        if (target) {
-                            const currentTargetCount = nextActiveUsers.get(target.id) || 0;
-                            nextActiveUsers.set(target.id, currentTargetCount + usersToMove);
-                            updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + usersToMove } });
-                            updateEdgeStats(nodeId, target.id, usersToMove, sourceTotalProcessed);
+                if (activeUsersForBranching > 0) {
+                    const branchType = node.data.config.branchType || 'sent';
+                    const timeoutHours = node.data.config.timeout || 24;
+                    const timeoutMs = timeoutHours * 3600000;
+
+                    if (branchType === 'sent') {
+                        // All remaining users go to default immediately
+                        if (defaultEdge) {
+                            const target = nodes.find(n => n.id === defaultEdge.target);
+                            if (target) {
+                                const currentTargetCount = nextActiveUsers.get(target.id) || 0;
+                                nextActiveUsers.set(target.id, currentTargetCount + activeUsersForBranching);
+                                updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + activeUsersForBranching } });
+                                updateEdgeStats(nodeId, target.id, activeUsersForBranching, sourceTotalProcessed);
+                            }
                         }
+                    } else if (branchType === 'open') {
+                        // Split into Open vs Else (Timeout)
+                        const openRate = (node.data.config.simulation?.openRate ?? 20) / 100;
+                        const openCount = Math.round(activeUsersForBranching * openRate);
+                        const elseCount = activeUsersForBranching - openCount;
+
+                        // Openers: Random delay within timeout
+                        if (openCount > 0) {
+                            // Distribute openCount across random times within timeout
+                            // For simplicity, we can just add them as waiting users with random release times
+                            // But we need to do this in batches or just pick a random time for the whole batch?
+                            // Better: Loop and assign random times? Too heavy.
+                            // Approximation: Split into a few chunks?
+                            // Or just use `addWaitingUsers` with a random delay for the whole block?
+                            // Let's use a simplified approach: Random delay between 1 tick and timeout.
+                            const delay = Math.floor(Math.random() * timeoutMs);
+                            addWaitingUsers(nodeId, openCount, currentTime + delay, 'open');
+                            nextActiveUsers.set(nodeId, 0); // They are waiting now
+                            updateNodeData(node.id, { stats: { ...node.data.stats, waiting: (node.data.stats.waiting || 0) + openCount } });
+                        }
+
+                        // Non-Openers: Wait full timeout then go to Default (Else)
+                        if (elseCount > 0) {
+                            addWaitingUsers(nodeId, elseCount, currentTime + timeoutMs, 'default');
+                            nextActiveUsers.set(nodeId, 0);
+                            updateNodeData(node.id, { stats: { ...node.data.stats, waiting: (node.data.stats.waiting || 0) + elseCount } });
+                        }
+
+                        addLog(nodeId, `Waiting: ${openCount} to open, ${elseCount} to else (timeout)`);
+                    } else if (branchType === 'click') {
+                        // Split into Click vs Else (Timeout)
+                        const clickRate = (node.data.config.simulation?.clickRate ?? 3) / 100;
+                        const clickCount = Math.round(activeUsersForBranching * clickRate);
+                        const elseCount = activeUsersForBranching - clickCount;
+
+                        if (clickCount > 0) {
+                            const delay = Math.floor(Math.random() * timeoutMs);
+                            addWaitingUsers(nodeId, clickCount, currentTime + delay, 'click');
+                            nextActiveUsers.set(nodeId, 0);
+                            updateNodeData(node.id, { stats: { ...node.data.stats, waiting: (node.data.stats.waiting || 0) + clickCount } });
+                        }
+
+                        if (elseCount > 0) {
+                            addWaitingUsers(nodeId, elseCount, currentTime + timeoutMs, 'default');
+                            nextActiveUsers.set(nodeId, 0);
+                            updateNodeData(node.id, { stats: { ...node.data.stats, waiting: (node.data.stats.waiting || 0) + elseCount } });
+                        }
+
+                        addLog(nodeId, `Waiting: ${clickCount} to click, ${elseCount} to else (timeout)`);
                     }
                 }
-
             } else if (node.type === 'split') {
                 const outgoers = getOutgoers(nodeId, nodes, edges);
                 if (outgoers.length > 1) {
@@ -391,29 +431,66 @@ export const processTick = () => {
     // 3. Process Waiting Users (Check if any are ready to release)
     // We need to check ALL nodes, not just active ones, because waiting users are not in activeUsers
     nodes.forEach((node) => {
-        if (node.type === 'wait' || (node.type === 'email' && node.data.config.sendMode === 'scheduled')) {
-            const releasedCount = processWaitingUsers(node.id, currentTime);
-            if (releasedCount > 0) {
-                addLog(node.id, `Released ${releasedCount} users`);
+        if (node.type === 'wait' || node.type === 'email') {
+            const releasedItems = processWaitingUsers(node.id, currentTime);
 
-                const outgoers = getOutgoers(node.id, nodes, edges);
-                if (outgoers.length > 0) {
-                    outgoers.forEach((target) => {
-                        const currentTargetCount = nextActiveUsers.get(target.id) || 0;
-                        nextActiveUsers.set(target.id, currentTargetCount + releasedCount);
-                        updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + releasedCount } });
+            if (releasedItems.length > 0) {
+                const outEdges = edges.filter(e => e.source === node.id);
 
-                        // Update edge stats
-                        // For wait node, source total is total processed by wait node
-                        const sourceTotal = (node.data.stats.processed || 0);
-                        updateEdgeStats(node.id, target.id, releasedCount, sourceTotal);
-                    });
-                }
+                let totalReleased = 0;
+
+                releasedItems.forEach(({ count, outcome }) => {
+                    totalReleased += count;
+                    addLog(node.id, `Released ${count} users (Outcome: ${outcome || 'default'})`);
+
+                    // Determine target edge based on outcome
+                    let targetEdge: Edge | undefined;
+
+                    if (outcome === 'open') {
+                        targetEdge = outEdges.find(e => e.sourceHandle === 'open');
+                    } else if (outcome === 'click') {
+                        targetEdge = outEdges.find(e => e.sourceHandle === 'click');
+                    } else if (outcome === 'drop') {
+                        targetEdge = outEdges.find(e => e.sourceHandle === 'drop');
+                    } else {
+                        // Default or 'sent' or wait node release
+                        targetEdge = outEdges.find(e => e.sourceHandle === 'default' || !e.sourceHandle);
+                    }
+
+                    if (targetEdge) {
+                        const target = nodes.find(n => n.id === targetEdge.target);
+                        if (target) {
+                            const currentTargetCount = nextActiveUsers.get(target.id) || 0;
+                            nextActiveUsers.set(target.id, currentTargetCount + count);
+                            updateNodeData(target.id, { stats: { ...target.data.stats, processed: (target.data.stats.processed || 0) + count } });
+
+                            // Update edge stats
+                            const sourceTotal = (node.data.stats.processed || 0);
+                            updateEdgeStats(node.id, target.id, count, sourceTotal);
+                        }
+                    }
+                });
 
                 // Decrement waiting stat
                 const currentWaiting = node.data.stats.waiting || 0;
-                updateNodeData(node.id, { stats: { ...node.data.stats, waiting: Math.max(0, currentWaiting - releasedCount) } });
+                updateNodeData(node.id, { stats: { ...node.data.stats, waiting: Math.max(0, currentWaiting - totalReleased) } });
             }
+        }
+    });
+
+    // 4. Update End Node Completion Rates (Global Recalculation)
+    // Calculate total users who have reached ANY end node
+    const endNodes = nodes.filter(n => n.type === 'end');
+    const totalEndedUsers = endNodes.reduce((sum, n) => sum + (n.data.stats.processed || 0), 0);
+
+    endNodes.forEach(node => {
+        const currentProcessed = node.data.stats.processed || 0;
+        // Calculate percentage based on total ended users
+        const completionRate = totalEndedUsers > 0 ? Math.round((currentProcessed / totalEndedUsers) * 100) : 0;
+
+        // Only update if changed to avoid unnecessary re-renders (though updateNodeData might handle this)
+        if (node.data.stats.completionRate !== completionRate) {
+            updateNodeData(node.id, { stats: { ...node.data.stats, completionRate } });
         }
     });
 
